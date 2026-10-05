@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RH — Real Human Presence</title>
+<meta name="description" content="A prototype where the screen becomes the place: a shared pane of glass between two people.">
+<meta property="og:title" content="RH — Real Human Presence"><meta property="og:description" content="Not another video call. A shared place for two people to be present.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#0a0c0f;--ink:#d3dde5;--dim:#6c7984;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0c0f;--ink:#d3dde5;--dim:#6c7984}}
+:root[data-theme="dark"]{--bg:#0a0c0f;--ink:#d3dde5;--dim:#6c7984}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:none}
+.t,.h{position:fixed;left:0;right:0;text-align:center;text-transform:uppercase;pointer-events:none}
+.t{top:calc(env(safe-area-inset-top,0px) + 20px);font-size:11px;letter-spacing:.5em;color:var(--dim)}
+.t b{display:block;margin-top:8px;font-weight:300;color:var(--ink);letter-spacing:.45em}
+.h{bottom:calc(env(safe-area-inset-bottom,0px) + 66px);font-size:12px;letter-spacing:.3em;color:var(--ink);font-weight:300;transition:opacity 1.2s}
+#m{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);display:flex;justify-content:center;gap:clamp(16px,5vw,34px);font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+#m span{cursor:pointer;padding:6px 2px;border-bottom:1px solid transparent;transition:all .4s}
+#m span:hover{color:var(--ink)}#m span.on{color:var(--ink);border-color:rgba(210,225,238,.5)}
+#nt{display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 100px);width:min(78vw,340px);background:rgba(10,12,15,.6);border:0;border-bottom:1px solid rgba(210,225,238,.4);color:var(--ink);font:italic 300 18px Georgia,serif;text-align:center;padding:8px;outline:none}
+#nt::placeholder{color:var(--dim)}
+#fl{display:none;position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 104px);justify-content:center;gap:clamp(14px,4vw,28px);font-size:12px;letter-spacing:.25em;text-transform:uppercase;color:var(--dim)}
+#fl span{cursor:pointer;padding:6px 2px;border-bottom:1px solid transparent;transition:all .4s}
+#fl span.on{border-color:currentColor}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="t">RH<b id="st">Quiet</b></div>
+<div class="h" id="h"></div>
+<input id="nt" maxlength="32" placeholder="write a note, press enter" autocomplete="off">
+<div id="fl"><span data-f="warmth" class="on">Warmth</span><span data-f="calm">Calm</span><span data-f="longing">Longing</span><span data-f="joy">Joy</span></div>
+<div id="m"><span data-m="touch" class="on">Touch</span><span data-m="notes">Notes</span><span data-m="walk">Walk</span><span data-m="draw">Draw</span><span data-m="feel">Feel</span></div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d'),$=id=>document.getElementById(id);
+const fg=document.createElement('canvas'),fx=fg.getContext('2d');
+let W,H,dpr,G,d=null,bond=0,last=performance.now(),lastAct=last,trails=[],rip=[],beat=0,ac=null,mode='touch',ink=[],notes=[],nc=0,rc=0,fe='warmth',feelT=0,pE=0,ht,fp=[],walk={x:0,y:0,tx:0,ty:0,d:0,init:0,s:1,ys:1,yx:null,yy:0};
+const P={x:0,y:0,a:0,auto:false,t:0};
+const glass=()=>{const w=Math.min(W*.84,460),h=Math.min(H*.78,780);return{x:(W-w)/2,y:(H-h)/2+10,w,h,r:Math.min(w,h)*.05}};
+function initFog(){
+  fg.width=G.w|0;fg.height=G.h|0;
+  const g=fx.createLinearGradient(0,0,G.w,G.h);g.addColorStop(0,'rgba(172,190,204,.95)');g.addColorStop(1,'rgba(205,218,228,.92)');
+  fx.fillStyle=g;fx.fillRect(0,0,G.w,G.h);
+  for(let i=0;i<900;i++){fx.fillStyle=`rgba(255,255,255,${Math.random()*.06})`;fx.beginPath();fx.arc(Math.random()*G.w,Math.random()*G.h,Math.random()*18+2,0,7);fx.fill()}
+}
+function size(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0);G=glass();initFog()}
+addEventListener('resize',size);size();
+
+function wipe(px,py,r,warm){
+  fx.globalCompositeOperation='destination-out';
+  const lx=px-G.x,ly=py-G.y,g=fx.createRadialGradient(lx,ly,0,lx,ly,r);
+  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(.6,'rgba(0,0,0,.7)');g.addColorStop(1,'rgba(0,0,0,0)');
+  fx.fillStyle=g;fx.beginPath();fx.arc(lx,ly,r,0,7);fx.fill();fx.globalCompositeOperation='source-over';
+  if(Math.random()<.5)trails.push({x:px,y:py,t:performance.now(),w:warm});
+}
+function hand(cx,cy,s,rgb,a,fl){
+  if(a<=.01)return;x.save();x.translate(cx,cy);x.scale(fl,1);x.globalAlpha=a;
+  x.shadowColor=`rgba(${rgb},.9)`;x.shadowBlur=s*.6;x.fillStyle=x.strokeStyle=`rgba(${rgb},.5)`;x.lineCap='round';
+  x.beginPath();x.ellipse(0,s*.12,s*.36,s*.4,0,0,7);x.fill();
+  x.lineWidth=s*.15;
+  [[-.26,-.18,-.34,-.78],[-.09,-.26,-.1,-.98],[.09,-.26,.11,-1],[.26,-.18,.32,-.84],[-.3,.1,-.68,-.2]].forEach(f=>{x.beginPath();x.moveTo(f[0]*s,f[1]*s);x.lineTo(f[2]*s,f[3]*s);x.stroke()});
+  x.restore();
+}
+function thump(){
+  if(!ac)return;[0,.22].forEach((o,i)=>{const t=ac.currentTime+o,os=ac.createOscillator(),g=ac.createGain();
+    os.frequency.value=i?48:58;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.16,t+.04);g.gain.exponentialRampToValueAtTime(.0001,t+.3);
+    os.connect(g).connect(ac.destination);os.start(t);os.stop(t+.35)});
+}
+function pr(e){return{x:e.clientX,y:e.clientY}}
+c.addEventListener('pointerdown',e=>{
+  const p=pr(e);if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(_){}}
+  d={...p,t:performance.now()};lastAct=d.t;$('h').style.opacity=0;
+  if(P.auto&&Math.hypot(P.x-p.x,P.y-p.y)<130){bond=Math.max(bond,.25);P.x=p.x;P.y=p.y}
+  P.auto=false;if(P.a<.05){P.x=p.x;P.y=p.y}
+});
+c.addEventListener('pointermove',e=>{
+  if(!d)return;const p=pr(e),n=Math.max(1,Math.hypot(p.x-d.x,p.y-d.y)/12|0);
+  if(mode==='draw'){const nw=performance.now(),mx=q=>G.x+G.w-(q-G.x);ink.push({a:d.x,b:d.y,c:p.x,e:p.y,t:nw,w:0},{a:mx(d.x),b:d.y,c:mx(p.x),e:p.y,t:nw+350,w:1});if(ink.length>700)ink.splice(0,2)}
+  else for(let i=1;i<=n;i++)wipe(d.x+(p.x-d.x)*i/n,d.y+(p.y-d.y)*i/n,34+bond*30,false);
+  d.x=p.x;d.y=p.y;lastAct=performance.now();
+});
+['pointerup','pointercancel','pointerleave'].forEach(k=>c.addEventListener(k,()=>{d=null;lastAct=performance.now()}));
+
+function frame(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  // presence engine
+  if(mode==='walk'){
+    if(!walk.init){walk.init=1;walk.x=G.x+G.w*.7;walk.y=G.y+G.h*.5;walk.tx=walk.x;walk.ty=walk.y}
+    if(d){walk.tx=Math.max(G.x+30,Math.min(G.x+G.w-30,d.x+(d.x<G.x+G.w/2?1:-1)*G.w*.16));walk.ty=d.y;wipe(d.x,d.y,45,false);
+      if(walk.yx==null){walk.yx=d.x;walk.yy=d.y}
+      if(Math.hypot(d.x-walk.yx,d.y-walk.yy)>30){fp.push({x:d.x+walk.ys*8,y:d.y,t:now,w:0});walk.ys=-walk.ys;walk.yx=d.x;walk.yy=d.y;step(170)}
+    }else{walk.yx=null;if(now-lastAct>3000&&Math.hypot(walk.tx-walk.x,walk.ty-walk.y)<20){walk.tx=G.x+G.w*(.2+Math.random()*.6);walk.ty=G.y+G.h*(.3+Math.random()*.5)}}
+    const dx=walk.tx-walk.x,dy=walk.ty-walk.y,dd=Math.hypot(dx,dy);
+    if(dd>3){const sp=Math.min(dd*3,110)*dt;walk.x+=dx/dd*sp;walk.y+=dy/dd*sp;walk.d+=sp;
+      if(walk.d>34){walk.d=0;walk.s=-walk.s;fp.push({x:walk.x+walk.s*8,y:walk.y+G.w*.2,t:now,w:1});step(115)}}
+    wipe(walk.x,walk.y+G.w*.08,70+bond*80,true);
+    const near=d&&Math.hypot(d.x-walk.x,d.y-walk.y)<G.w*.3;
+    bond=near?Math.min(1,bond+dt/5):Math.max(0,bond-dt/6);
+    P.a=Math.max(0,P.a-dt*2);
+  }else if(d){
+    const near=now-d.t>(mode==='draw'?300:900),tx=mode==='draw'?G.x+G.w-(d.x-G.x):d.x;
+    P.x+=(tx-P.x)*.07;P.y+=(d.y-P.y)*.07;
+    P.a+=((near?1:0)-P.a)*dt*1.8;
+    if(P.a>.7)bond=Math.min(1,bond+dt/6);
+    wipe(d.x,d.y,50+bond*100,false);
+  }else{
+    if(P.auto){P.a+=(1-P.a)*dt*1.5;if(now-P.t>10000)P.auto=false}
+    else P.a=Math.max(0,P.a-dt/2.5);
+    if(!P.auto)bond=Math.max(0,bond-dt/4);
+    if(mode==='touch'&&now-lastAct>6500&&!P.auto&&P.a<.05){P.auto=true;P.t=now;P.x=G.x+G.w*(.3+Math.random()*.4);P.y=G.y+G.h*(.5+Math.random()*.25);setHint('Someone is already here',6000)}
+  }
+  if(mode!=='walk'&&P.a>.05&&(P.auto||d))wipe(P.x,P.y,55+bond*90,true);
+  // notes: words appear as clear glass in the fog
+  for(const n of notes){const age=now-n.t0;if(age<0||age>11000)continue;const k=Math.min(n.txt.length,Math.floor(age/1000*14));
+    if(k>0){fx.globalCompositeOperation='destination-out';fx.font=n.f;fx.textAlign='left';fx.shadowColor='#000';fx.shadowBlur=16;fx.fillStyle='#000';fx.fillText(n.txt.slice(0,k),n.x0-G.x,n.y-G.y);fx.shadowBlur=0;fx.globalCompositeOperation='source-over'}}
+  notes=notes.filter(n=>now-n.t0<14000);
+  // feeling creator: a pulse leaves your hand, and answers from theirs half a beat later
+  pE*=Math.exp(-dt*3);
+  if(mode==='feel'&&d&&P.a>.5){feelT-=dt;if(feelT<=0){const F=FE[fe];feelT=60/F.bpm*(fe==='longing'?.8+Math.random()*.7:1);const half=feelT*500;
+    rip.push({x:d.x,y:d.y,t:now,c:F.h},{x:P.x,y:P.y,t:now+half,c:F.h});pE=1;pulse(0);setTimeout(()=>{pE=Math.max(pE,.7);pulse(1)},half)}}
+  else if(mode!=='feel')feelT=0;
+  // breath: fog returns slowly
+  fx.fillStyle=`rgba(190,205,216,${d?.004:.012})`;fx.fillRect(0,0,G.w,G.h);
+  // heartbeat
+  beat-=dt;if(mode!=='feel'&&bond>.12&&beat<=0){beat=1.15;rip.push({x:P.x,y:P.y,t:now});thump()}
+  // ---- draw
+  x.clearRect(0,0,W,H);
+  const warm=x.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.6);
+  warm.addColorStop(0,`rgba(70,52,40,${.12+bond*.3})`);warm.addColorStop(1,'rgba(10,12,15,0)');x.fillStyle=warm;x.fillRect(0,0,W,H);
+  x.save();x.beginPath();x.roundRect(G.x,G.y,G.w,G.h,G.r);x.clip();
+  // the far side: a warm room with someone standing in it
+  let r=x.createLinearGradient(0,G.y,0,G.y+G.h);r.addColorStop(0,'#1a1511');r.addColorStop(1,'#2a1f17');x.fillStyle=r;x.fillRect(G.x,G.y,G.w,G.h);
+  let l=x.createRadialGradient(G.x+G.w/2,G.y+G.h*.4,0,G.x+G.w/2,G.y+G.h*.4,G.h*.6);
+  l.addColorStop(0,`rgba(255,200,150,${.25+bond*.4})`);l.addColorStop(1,'rgba(255,200,150,0)');x.fillStyle=l;x.fillRect(G.x,G.y,G.w,G.h);
+  let sx=G.x+G.w/2+Math.sin(now/2300)*6,sy=G.y+G.h*.4+Math.sin(now/1500)*3,s=G.w*.2;if(mode==='walk'){sx=walk.x;sy=walk.y;s=G.w*(.1+.1*((walk.y-G.y)/G.h))}const sa=.3+bond*.7;
+  let b=x.createRadialGradient(sx,sy+s*1.6,0,sx,sy+s*1.6,s*1.9);b.addColorStop(0,`rgba(255,215,180,${.5*sa})`);b.addColorStop(1,'rgba(255,215,180,0)');
+  x.fillStyle=b;x.beginPath();x.ellipse(sx,sy+s*1.7,s*1.8,s*1.5,0,0,7);x.fill();
+  b=x.createRadialGradient(sx,sy,0,sx,sy,s*.85);b.addColorStop(0,`rgba(255,225,195,${.8*sa})`);b.addColorStop(1,'rgba(255,225,195,0)');
+  x.fillStyle=b;x.beginPath();x.arc(sx,sy,s*.85,0,7);x.fill();
+  // fog between you and them
+  x.drawImage(fg,G.x,G.y);
+  // glows left by touch
+  trails=trails.filter(t=>now-t.t<3500);
+  for(const t of trails){const k=1-(now-t.t)/3500,rgb=t.w?'255,200,150':'205,225,240',g=x.createRadialGradient(t.x,t.y,0,t.x,t.y,40);
+    g.addColorStop(0,`rgba(${rgb},${k*.16})`);g.addColorStop(1,`rgba(${rgb},0)`);x.fillStyle=g;x.fillRect(t.x-40,t.y-40,80,80)}
+  x.lineCap='round';
+  if(mode==='draw'){x.strokeStyle='rgba(210,225,238,.12)';x.setLineDash([3,7]);x.beginPath();x.moveTo(G.x+G.w/2,G.y+12);x.lineTo(G.x+G.w/2,G.y+G.h-12);x.stroke();x.setLineDash([])}
+  ink=ink.filter(q=>now-q.t<20000);
+  for(const q of ink){if(now<q.t)continue;const k=1-(now-q.t)/20000,rgb=q.w?'255,200,150':'210,228,240';
+    x.strokeStyle=`rgba(${rgb},${k*.25})`;x.lineWidth=9;x.beginPath();x.moveTo(q.a,q.b);x.lineTo(q.c,q.e);x.stroke();
+    x.strokeStyle=`rgba(${rgb},${k*.9})`;x.lineWidth=2.5;x.stroke()}
+  fp=fp.filter(q=>now-q.t<6000);
+  for(const q of fp){x.fillStyle=`rgba(${q.w?'255,200,150':'210,228,240'},${(1-(now-q.t)/6000)*.4})`;x.beginPath();x.ellipse(q.x,q.y,5,9,0,0,7);x.fill()}
+  for(const n of notes){const age=now-n.t0;if(age<0)continue;const k=Math.min(n.txt.length,Math.floor(age/1000*14)),al=age>11000?1-(age-11000)/3000:1,rgb=n.w?'255,205,160':'210,228,240';
+    x.font=n.f;x.textAlign='left';x.shadowColor=`rgb(${rgb})`;x.shadowBlur=12;x.fillStyle=`rgba(${rgb},${.9*al})`;x.fillText(n.txt.slice(0,k),n.x0,n.y);x.shadowBlur=0}
+  if(mode==='feel'&&d){const F=FE[fe],g=x.createRadialGradient(d.x,d.y,0,d.x,d.y,G.w*.8);g.addColorStop(0,`rgba(${F.h},${pE*.28+bond*.12})`);g.addColorStop(1,`rgba(${F.h},0)`);x.fillStyle=g;x.fillRect(G.x,G.y,G.w,G.h)}
+  // heartbeat rings
+  rip=rip.filter(q=>now-q.t<2800);
+  for(const q of rip){const k=(now-q.t)/2800;if(k<0)continue;x.strokeStyle=`rgba(${q.c||'255,215,180'},${(1-k)*(1-k)*.5})`;x.lineWidth=1.5;x.beginPath();x.arc(q.x,q.y,k*G.w*.5,0,7);x.stroke()}
+  // the two hands: yours, and theirs from the other side
+  const hs=Math.min(G.w,G.h)*.2;
+  if(mode!=='walk'){const hk=mode==='draw'?.5:1;hand(P.x,P.y,hs*hk,mode==='feel'?FE[fe].h:'255,200,150',P.a*.85,-1);if(d)hand(d.x,d.y,hs*hk,mode==='feel'?FE[fe].h:'210,228,240',.75,1)}
+  x.restore();
+  // frame
+  x.beginPath();x.roundRect(G.x,G.y,G.w,G.h,G.r);x.strokeStyle=`rgba(210,225,238,${.22+bond*.25})`;x.lineWidth=1;x.stroke();
+  // labels
+  const lab=bond>.6?'Presence':bond>.2?'Warmth':(d||P.a>.3)?'Touch':'Quiet';
+  $('st').textContent=(!d&&bond>.03)?'Release':(mode==='feel'&&d&&P.a>.5?fe+' · felt':lab);
+  
+  requestAnimationFrame(frame);
+}
+const RP=["I'm here.","I can see your handwriting.","Stay a little longer.","Tell me about your day.","I wish you were closer.","Look up."];
+const HT={touch:'Place your hand on the glass',notes:'Write them a note — or write on the fog',walk:'Drag to walk. Walk toward the middle.',draw:'Draw. They draw with you, across the glass.',feel:'Choose a feeling. Hold the glass — they feel it, and answer.'};
+function setHint(t,ms){const h=$('h');h.textContent=t;h.style.opacity=1;clearTimeout(ht);if(ms)ht=setTimeout(()=>h.style.opacity=0,ms)}
+function step(f){if(!ac)return;const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.05,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+.12);o.connect(g).connect(ac.destination);o.start(t);o.stop(t+.15)}
+function addNote(txt,who,t0){txt=txt.trim().slice(0,32);if(!txt)return;
+  const fs=Math.max(14,Math.min(30,G.w*.84/(txt.length*.5)));x.font=`italic 300 ${fs}px Georgia,serif`;const wd=x.measureText(txt).width;
+  notes.push({txt,w:who==='p'?1:0,t0:t0||performance.now(),f:x.font,x0:G.x+(G.w-wd)/2,y:who==='me'?G.y+G.h*.72-(nc%2)*58:G.y+G.h*.2+(nc%2)*58});nc++}
+const M=document.querySelectorAll('#m span'),nt=$('nt');
+M.forEach(b=>b.onclick=()=>{mode=b.dataset.m;M.forEach(q=>q.classList.toggle('on',q===b));d=null;bond*=.5;P.auto=false;walk.init=0;lastAct=performance.now();
+  nt.style.display=mode==='notes'?'block':'none';$('fl').style.display=mode==='feel'?'flex':'none';setHint(HT[mode],6000);
+  if(mode==='notes'&&!notes.length)addNote('I left you a note.','p',performance.now()+2000)});
+nt.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=nt.value;nt.value='';if(v.trim()){addNote(v,'me');addNote(RP[rc++%RP.length],'p',performance.now()+2200)}}});
+const FE={warmth:{h:'255,190,140',bpm:62,hz:196,v:[40,120,40]},calm:{h:'170,205,235',bpm:40,hz:147,v:[160]},longing:{h:'200,170,230',bpm:50,hz:174,v:[30,90,30,220]},joy:{h:'255,225,150',bpm:112,hz:262,v:[25,50,25]}};
+function pulse(w){const F=FE[fe];try{navigator.vibrate&&navigator.vibrate(w?F.v.map(v=>Math.round(v*.6)):F.v)}catch(_){}
+  if(!ac)return;const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=F.hz*(w?1.5:1);
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(w?.05:.09,t+.05);g.gain.exponentialRampToValueAtTime(.0001,t+(fe==='calm'?1.6:.7));o.connect(g).connect(ac.destination);o.start(t);o.stop(t+1.8)}
+const FB=document.querySelectorAll('#fl span');
+function pickF(b){fe=b.dataset.f;FB.forEach(q=>{q.classList.toggle('on',q===b);q.style.color=q===b?`rgb(${FE[fe].h})`:''})}
+FB.forEach(b=>b.onclick=()=>pickF(b));pickF(FB[0]);
+setHint(HT.touch,0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
